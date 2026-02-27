@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: read/write only your own document
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Matchmaking queue: only Cloud Functions should manage this,
+    // but allow authenticated users to create entries (as fallback)
+    match /matchmaking_queue/{entryId} {
+      allow read: if false;
+      allow create: if request.auth != null;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Chat rooms: only participants can read
+    match /chat_rooms/{roomId} {
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.participants;
+      allow write: if false; // only Cloud Functions create rooms
+
+      // Messages: participants can read, only sender can create
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.participants;
+        allow create: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.participants
+          && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
