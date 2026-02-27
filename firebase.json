@@ -1,14 +1,1 @@
-{
-  "firestore": {
-    "rules": "firebase/firestore.rules",
-    "indexes": "firebase/firestore.indexes.json"
-  },
-  "functions": [
-    {
-      "source": "firebase/functions",
-      "codebase": "default",
-      "ignore": ["node_modules", ".git"],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
-    }
-  ]
-}
+{"firestore":{"rules":"firebase/firestore.rules","indexes":"firebase/firestore.indexes.json"},"functions":[{"source":"firebase/functions","codebase":"default","ignore":["node_modules",".git"],"predeploy":["npm --prefix \"$RESOURCE_DIR\" run build"]}],"flutter":{"platforms":{"android":{"default":{"projectId":"stranger-connect-1951f","appId":"1:934725499973:android:26ae1e8576431644bfb72c","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"stranger-connect-1951f","appId":"1:934725499973:ios:9cb5c39959f63e4bbfb72c","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"stranger-connect-1951f","configurations":{"android":"1:934725499973:android:26ae1e8576431644bfb72c","ios":"1:934725499973:ios:9cb5c39959f63e4bbfb72c"}}}}}}

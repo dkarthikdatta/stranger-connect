@@ -7,12 +7,12 @@ import 'package:stranger_connect/services/matchmaking_service.dart';
 import 'package:stranger_connect/services/storage_service.dart';
 import 'package:stranger_connect/screens/splash_screen.dart';
 import 'package:stranger_connect/utils/app_theme.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    // options: DefaultFirebaseOptions.currentPlatform,
-    // Uncomment above after running: flutterfire configure
+    options: DefaultFirebaseOptions.currentPlatform,
   );
   runApp(const StrangerConnectApp());
 }
