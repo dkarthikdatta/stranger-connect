@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:stranger_connect/screens/chat_screen.dart';
+import 'package:stranger_connect/services/config_service.dart';
 import 'package:stranger_connect/services/matchmaking_service.dart';
 import 'package:stranger_connect/utils/app_theme.dart';
 
@@ -16,23 +17,59 @@ class MatchingScreen extends StatefulWidget {
 
 class _MatchingScreenState extends State<MatchingScreen> {
   late MatchmakingService _matchmakingService;
+  late ConfigService _configService;
   StreamSubscription<MatchmakingState>? _subscription;
   MatchmakingStatus _status = MatchmakingStatus.searching;
+
+  int _secondsRemaining = 30;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
     _matchmakingService = context.read<MatchmakingService>();
+    _configService = context.read<ConfigService>();
     _subscription = _matchmakingService.stateStream.listen(_onStateChange);
+    _startSearch();
+  }
+
+  Future<void> _startSearch() async {
+    final config = await _configService.load();
+    if (!mounted) return;
+
+    setState(() {
+      _status = MatchmakingStatus.searching;
+      _secondsRemaining = config.timeoutSeconds;
+    });
+
     _matchmakingService.joinQueue();
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() => _secondsRemaining--);
+
+      if (_secondsRemaining <= 0) {
+        timer.cancel();
+        _matchmakingService.leaveQueue();
+        setState(() => _status = MatchmakingStatus.timeout);
+      }
+    });
   }
 
   void _onStateChange(MatchmakingState state) {
     if (!mounted) return;
 
-    setState(() => _status = state.status);
-
     if (state.status == MatchmakingStatus.matched && state.chatRoomId != null) {
+      _countdownTimer?.cancel();
+      setState(() => _status = MatchmakingStatus.matched);
       Future.delayed(const Duration(milliseconds: 500), () {
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -42,11 +79,15 @@ class _MatchingScreenState extends State<MatchingScreen> {
           ),
         );
       });
+    } else if (state.status == MatchmakingStatus.error) {
+      _countdownTimer?.cancel();
+      setState(() => _status = MatchmakingStatus.error);
     }
   }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _subscription?.cancel();
     if (_status == MatchmakingStatus.searching) {
       _matchmakingService.leaveQueue();
@@ -97,7 +138,10 @@ class _MatchingScreenState extends State<MatchingScreen> {
           color: AppTheme.primaryColor,
         )
             .animate(onPlay: (c) => c.repeat(reverse: true))
-            .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 1000.ms),
+            .scale(
+                begin: const Offset(0.9, 0.9),
+                end: const Offset(1.1, 1.1),
+                duration: 1000.ms),
         const SizedBox(height: 32),
         const Text(
           'Looking for a stranger...',
@@ -116,7 +160,31 @@ class _MatchingScreenState extends State<MatchingScreen> {
           ),
         ),
         const SizedBox(height: 40),
-        const CircularProgressIndicator(color: AppTheme.primaryColor),
+        SizedBox(
+          width: 80,
+          height: 80,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CircularProgressIndicator(
+                value: _secondsRemaining / _configService.config.timeoutSeconds,
+                color: AppTheme.primaryColor,
+                backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+                strokeWidth: 6,
+              ),
+              Center(
+                child: Text(
+                  '$_secondsRemaining',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -162,18 +230,20 @@ class _MatchingScreenState extends State<MatchingScreen> {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Try again - someone might be\nshaking right now!',
+          'Try again — someone might be\nshaking right now!',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: 32),
         ElevatedButton.icon(
-          onPressed: () {
-            setState(() => _status = MatchmakingStatus.searching);
-            _matchmakingService.joinQueue();
-          },
+          onPressed: _startSearch,
           icon: const Icon(Icons.refresh_rounded),
           label: const Text('Try Again'),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Go Back'),
         ),
       ],
     );
@@ -197,7 +267,13 @@ class _MatchingScreenState extends State<MatchingScreen> {
           ),
         ),
         const SizedBox(height: 32),
-        ElevatedButton(
+        ElevatedButton.icon(
+          onPressed: _startSearch,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try Again'),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Go Back'),
         ),

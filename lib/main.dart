@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:stranger_connect/services/auth_service.dart';
 import 'package:stranger_connect/services/chat_service.dart';
 import 'package:stranger_connect/services/matchmaking_service.dart';
+import 'package:stranger_connect/services/config_service.dart';
 import 'package:stranger_connect/services/storage_service.dart';
 import 'package:stranger_connect/screens/splash_screen.dart';
 import 'package:stranger_connect/utils/app_theme.dart';
@@ -23,9 +24,11 @@ class StrangerConnectApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = AuthService();
+    final configService = ConfigService();
     return MultiProvider(
       providers: [
         Provider<AuthService>.value(value: authService),
+        Provider<ConfigService>.value(value: configService),
         Provider<ChatService>(create: (_) => ChatService()),
         Provider<StorageService>(create: (_) => StorageService()),
         Provider<MatchmakingService>(

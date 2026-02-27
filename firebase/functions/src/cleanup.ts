@@ -2,29 +2,34 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 
 const db = admin.firestore();
+const DEFAULT_TIMEOUT_SECONDS = 30;
 
-/**
- * Scheduled function: runs every minute to clean up stale queue entries.
- * Deletes entries older than 30 seconds that are still in "waiting" status.
- */
 export const cleanupQueue = onSchedule("every 1 minutes", async () => {
-    const cutoff = admin.firestore.Timestamp.fromMillis(
-      Date.now() - 30 * 1000
-    );
+  let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+  try {
+    const doc = await db.collection("config").doc("matchmaking").get();
+    timeoutSeconds = (doc.data()?.timeoutSeconds as number) ?? DEFAULT_TIMEOUT_SECONDS;
+  } catch {
+    // use default
+  }
 
-    const staleEntries = await db
-      .collection("matchmaking_queue")
-      .where("status", "==", "waiting")
-      .where("timestamp", "<", cutoff)
-      .get();
+  const cutoff = admin.firestore.Timestamp.fromMillis(
+    Date.now() - timeoutSeconds * 1000
+  );
 
-    if (staleEntries.empty) return;
+  const staleEntries = await db
+    .collection("matchmaking_queue")
+    .where("status", "==", "waiting")
+    .where("timestamp", "<", cutoff)
+    .get();
 
-    const batch = db.batch();
-    for (const doc of staleEntries.docs) {
-      batch.delete(doc.ref);
-    }
-    await batch.commit();
+  if (staleEntries.empty) return;
 
-    console.log(`Cleaned up ${staleEntries.size} stale queue entries`);
-  });
+  const batch = db.batch();
+  for (const doc of staleEntries.docs) {
+    batch.delete(doc.ref);
+  }
+  await batch.commit();
+
+  console.log(`Cleaned up ${staleEntries.size} stale queue entries`);
+});

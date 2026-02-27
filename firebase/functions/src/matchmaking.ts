@@ -2,15 +2,19 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
 const db = admin.firestore();
-const MATCH_WINDOW_SECONDS = 5;
+const DEFAULT_MATCH_WINDOW_SECONDS = 5;
 
-/**
- * Callable function: user joins the matchmaking queue.
- * If another user is already waiting (within the time window), they get matched.
- * Otherwise, the user is added to the queue and waits.
- */
-export const joinQueue = functions.https.onCall(async (request) => {
-  const uid = request.auth?.uid;
+async function getMatchWindowSeconds(): Promise<number> {
+  try {
+    const doc = await db.collection("config").doc("matchmaking").get();
+    return (doc.data()?.matchWindowSeconds as number) ?? DEFAULT_MATCH_WINDOW_SECONDS;
+  } catch {
+    return DEFAULT_MATCH_WINDOW_SECONDS;
+  }
+}
+
+export const joinQueue = functions.https.onCall(async (data, context) => {
+  const uid = context.auth?.uid;
   if (!uid) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -27,12 +31,12 @@ export const joinQueue = functions.https.onCall(async (request) => {
   }
 
   const userData = userDoc.data()!;
+  const matchWindowSeconds = await getMatchWindowSeconds();
   const now = admin.firestore.Timestamp.now();
   const windowStart = admin.firestore.Timestamp.fromMillis(
-    now.toMillis() - MATCH_WINDOW_SECONDS * 1000
+    now.toMillis() - matchWindowSeconds * 1000
   );
 
-  // Use a transaction to prevent race conditions (two users matching the same person)
   return db.runTransaction(async (transaction) => {
     const queueQuery = await transaction.get(
       db
@@ -42,14 +46,12 @@ export const joinQueue = functions.https.onCall(async (request) => {
         .limit(10)
     );
 
-    // Find a waiting user that isn't the caller
     const match = queueQuery.docs.find((doc) => doc.data().userId !== uid);
 
     if (match) {
       const matchData = match.data();
       const chatRoomRef = db.collection("chat_rooms").doc();
 
-      // Create the chat room
       transaction.set(chatRoomRef, {
         participants: [uid, matchData.userId],
         participantProfiles: {
@@ -67,7 +69,6 @@ export const joinQueue = functions.https.onCall(async (request) => {
         lastMessageAt: null,
       });
 
-      // Update both users with the match
       const matchInfo = {
         chatRoomId: chatRoomRef.id,
         matchedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -81,13 +82,11 @@ export const joinQueue = functions.https.onCall(async (request) => {
         currentMatch: matchInfo,
       });
 
-      // Mark the queue entry as matched
       transaction.update(match.ref, { status: "matched" });
 
       return { status: "matched", chatRoomId: chatRoomRef.id };
     }
 
-    // No match found - remove any existing queue entry for this user first
     const existingEntry = await transaction.get(
       db
         .collection("matchmaking_queue")
@@ -100,7 +99,6 @@ export const joinQueue = functions.https.onCall(async (request) => {
       transaction.delete(doc.ref);
     }
 
-    // Add to queue
     const queueRef = db.collection("matchmaking_queue").doc();
     transaction.set(queueRef, {
       userId: uid,
@@ -114,11 +112,8 @@ export const joinQueue = functions.https.onCall(async (request) => {
   });
 });
 
-/**
- * Callable function: user leaves the matchmaking queue.
- */
-export const leaveQueue = functions.https.onCall(async (request) => {
-  const uid = request.auth?.uid;
+export const leaveQueue = functions.https.onCall(async (data, context) => {
+  const uid = context.auth?.uid;
   if (!uid) {
     throw new functions.https.HttpsError(
       "unauthenticated",

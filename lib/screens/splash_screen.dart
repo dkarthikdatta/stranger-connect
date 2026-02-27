@@ -22,16 +22,33 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initialize() async {
     final authService = context.read<AuthService>();
 
-    await authService.signInAnonymously();
-    final hasProfile = await authService.hasProfile();
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        await authService.signInAnonymously();
+        final hasProfile = await authService.hasProfile();
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                hasProfile ? const HomeScreen() : const ProfileSetupScreen(),
+          ),
+        );
+        return;
+      } catch (e) {
+        debugPrint('Init attempt ${attempt + 1} failed: $e');
+        if (attempt < 2) {
+          await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+        }
+      }
+    }
 
     if (!mounted) return;
-
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => hasProfile ? const HomeScreen() : const ProfileSetupScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
     );
   }
 

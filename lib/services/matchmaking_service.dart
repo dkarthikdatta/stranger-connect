@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:stranger_connect/services/auth_service.dart';
 
 enum MatchmakingStatus { idle, searching, matched, error, timeout }
@@ -24,7 +25,6 @@ class MatchmakingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   StreamSubscription<DocumentSnapshot>? _matchListener;
-  Timer? _timeoutTimer;
 
   final _stateController = StreamController<MatchmakingState>.broadcast();
   Stream<MatchmakingState> get stateStream => _stateController.stream;
@@ -51,8 +51,9 @@ class MatchmakingService {
 
       // Status is "waiting" - listen for match via user document
       _listenForMatch(uid);
-      _startTimeout();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('Matchmaking error: $e');
+      debugPrint('Stack trace: $stackTrace');
       _stateController.add(MatchmakingState(
         status: MatchmakingStatus.error,
         errorMessage: e.toString(),
@@ -79,14 +80,6 @@ class MatchmakingService {
     });
   }
 
-  void _startTimeout() {
-    _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 15), () {
-      _stateController.add(MatchmakingState(status: MatchmakingStatus.timeout));
-      leaveQueue();
-    });
-  }
-
   Future<void> leaveQueue() async {
     try {
       await _functions.httpsCallable('leaveQueue').call({});
@@ -98,8 +91,6 @@ class MatchmakingService {
   void _cleanup() {
     _matchListener?.cancel();
     _matchListener = null;
-    _timeoutTimer?.cancel();
-    _timeoutTimer = null;
   }
 
   Future<void> clearCurrentMatch() async {
