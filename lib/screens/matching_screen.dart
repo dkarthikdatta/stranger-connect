@@ -15,20 +15,29 @@ class MatchingScreen extends StatefulWidget {
   State<MatchingScreen> createState() => _MatchingScreenState();
 }
 
-class _MatchingScreenState extends State<MatchingScreen> {
+class _MatchingScreenState extends State<MatchingScreen>
+    with SingleTickerProviderStateMixin {
   late MatchmakingService _matchmakingService;
   late ConfigService _configService;
   StreamSubscription<MatchmakingState>? _subscription;
   MatchmakingStatus _status = MatchmakingStatus.searching;
 
-  int _secondsRemaining = 30;
-  Timer? _countdownTimer;
+  late AnimationController _timerController;
+  int _totalSeconds = 30;
 
   @override
   void initState() {
     super.initState();
     _matchmakingService = context.read<MatchmakingService>();
     _configService = context.read<ConfigService>();
+    _timerController = AnimationController(vsync: this);
+    _timerController.addListener(() => setState(() {}));
+    _timerController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        _matchmakingService.leaveQueue();
+        setState(() => _status = MatchmakingStatus.timeout);
+      }
+    });
     _subscription = _matchmakingService.stateStream.listen(_onStateChange);
     _startSearch();
   }
@@ -37,38 +46,23 @@ class _MatchingScreenState extends State<MatchingScreen> {
     final config = await _configService.load();
     if (!mounted) return;
 
-    setState(() {
-      _status = MatchmakingStatus.searching;
-      _secondsRemaining = config.timeoutSeconds;
-    });
+    _totalSeconds = config.timeoutSeconds;
+    setState(() => _status = MatchmakingStatus.searching);
+
+    _timerController.duration = Duration(seconds: _totalSeconds);
+    _timerController.forward(from: 0.0);
 
     _matchmakingService.joinQueue();
-    _startCountdown();
   }
 
-  void _startCountdown() {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      setState(() => _secondsRemaining--);
-
-      if (_secondsRemaining <= 0) {
-        timer.cancel();
-        _matchmakingService.leaveQueue();
-        setState(() => _status = MatchmakingStatus.timeout);
-      }
-    });
-  }
+  int get _secondsRemaining =>
+      ((_totalSeconds) * (1.0 - _timerController.value)).ceil();
 
   void _onStateChange(MatchmakingState state) {
     if (!mounted) return;
 
     if (state.status == MatchmakingStatus.matched && state.chatRoomId != null) {
-      _countdownTimer?.cancel();
+      _timerController.stop();
       setState(() => _status = MatchmakingStatus.matched);
       Future.delayed(const Duration(milliseconds: 500), () {
         if (!mounted) return;
@@ -80,14 +74,14 @@ class _MatchingScreenState extends State<MatchingScreen> {
         );
       });
     } else if (state.status == MatchmakingStatus.error) {
-      _countdownTimer?.cancel();
+      _timerController.stop();
       setState(() => _status = MatchmakingStatus.error);
     }
   }
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
+    _timerController.dispose();
     _subscription?.cancel();
     if (_status == MatchmakingStatus.searching) {
       _matchmakingService.leaveQueue();
@@ -167,7 +161,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
             fit: StackFit.expand,
             children: [
               CircularProgressIndicator(
-                value: _secondsRemaining / _configService.config.timeoutSeconds,
+                value: 1.0 - _timerController.value,
                 color: AppTheme.primaryColor,
                 backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
                 strokeWidth: 6,

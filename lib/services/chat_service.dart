@@ -51,6 +51,16 @@ class ChatService {
     await batch.commit();
   }
 
+  Future<void> endChat({
+    required String chatRoomId,
+    required String endedByUid,
+  }) async {
+    await _firestore.collection('chat_rooms').doc(chatRoomId).update({
+      'endedAt': FieldValue.serverTimestamp(),
+      'endedBy': endedByUid,
+    });
+  }
+
   Future<ChatRoomModel?> getChatRoom(String chatRoomId) async {
     final doc =
         await _firestore.collection('chat_rooms').doc(chatRoomId).get();

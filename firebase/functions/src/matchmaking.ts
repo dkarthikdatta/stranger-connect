@@ -38,6 +38,19 @@ export const joinQueue = functions.https.onCall(async (data, context) => {
   );
 
   return db.runTransaction(async (transaction) => {
+    // 🔴 IMPORTANT: remove any old waiting entries of this user first
+    const existingEntry = await transaction.get(
+      db
+        .collection("matchmaking_queue")
+        .where("userId", "==", uid)
+        .where("status", "==", "waiting")
+    );
+
+    for (const doc of existingEntry.docs) {
+      transaction.delete(doc.ref);
+    }
+
+    // Find other users shaking within window
     const queueQuery = await transaction.get(
       db
         .collection("matchmaking_queue")
@@ -46,10 +59,13 @@ export const joinQueue = functions.https.onCall(async (data, context) => {
         .limit(10)
     );
 
-    const match = queueQuery.docs.find((doc) => doc.data().userId !== uid);
+    const match = queueQuery.docs.find(
+      (doc) => doc.data().userId !== uid
+    );
 
     if (match) {
       const matchData = match.data();
+
       const chatRoomRef = db.collection("chat_rooms").doc();
 
       transaction.set(chatRoomRef, {
@@ -67,6 +83,7 @@ export const joinQueue = functions.https.onCall(async (data, context) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         lastMessage: null,
         lastMessageAt: null,
+        active: true,
       });
 
       const matchInfo = {
@@ -74,6 +91,7 @@ export const joinQueue = functions.https.onCall(async (data, context) => {
         matchedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
+      // Update both users
       transaction.update(db.collection("users").doc(uid), {
         currentMatch: matchInfo,
       });
@@ -82,29 +100,19 @@ export const joinQueue = functions.https.onCall(async (data, context) => {
         currentMatch: matchInfo,
       });
 
-      transaction.update(match.ref, { status: "matched" });
+      // 🔥 CRITICAL FIX: DELETE matched queue entry
+      transaction.delete(match.ref);
 
       return { status: "matched", chatRoomId: chatRoomRef.id };
     }
 
-    const existingEntry = await transaction.get(
-      db
-        .collection("matchmaking_queue")
-        .where("userId", "==", uid)
-        .where("status", "==", "waiting")
-        .limit(1)
-    );
-
-    for (const doc of existingEntry.docs) {
-      transaction.delete(doc.ref);
-    }
-
+    // If no match found → add to queue
     const queueRef = db.collection("matchmaking_queue").doc();
     transaction.set(queueRef, {
       userId: uid,
       displayName: userData.displayName,
       profilePicUrl: userData.profilePicUrl || null,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: now, // 🔥 use explicit timestamp, not serverTimestamp here
       status: "waiting",
     });
 

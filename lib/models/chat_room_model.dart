@@ -7,6 +7,8 @@ class ChatRoomModel {
   final DateTime createdAt;
   final String? lastMessage;
   final DateTime? lastMessageAt;
+  final DateTime? endedAt;
+  final String? endedBy;
 
   ChatRoomModel({
     required this.id,
@@ -15,7 +17,11 @@ class ChatRoomModel {
     required this.createdAt,
     this.lastMessage,
     this.lastMessageAt,
+    this.endedAt,
+    this.endedBy,
   });
+
+  bool get isEnded => endedAt != null;
 
   factory ChatRoomModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -33,6 +39,10 @@ class ChatRoomModel {
       lastMessageAt: data['lastMessageAt'] != null
           ? (data['lastMessageAt'] as Timestamp).toDate()
           : null,
+      endedAt: data['endedAt'] != null
+          ? (data['endedAt'] as Timestamp).toDate()
+          : null,
+      endedBy: data['endedBy'],
     );
   }
 

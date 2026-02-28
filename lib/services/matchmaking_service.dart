@@ -38,26 +38,21 @@ class MatchmakingService {
     _stateController.add(MatchmakingState(status: MatchmakingStatus.searching));
 
     try {
-      final result = await _functions.httpsCallable('joinQueue').call({});
-      final data = result.data as Map<String, dynamic>;
+      final callable = FirebaseFunctions.instance.httpsCallable('joinQueue');
+      final result = await callable.call();
 
-      if (data['status'] == 'matched') {
-        _stateController.add(MatchmakingState(
-          status: MatchmakingStatus.matched,
-          chatRoomId: data['chatRoomId'],
-        ));
-        return;
+      final status = result.data['status'];
+
+      if (status == 'matched') {
+        // Do nothing here.
+        // Navigation should ONLY happen from user doc listener.
+        print("Matched via backend");
+      } else {
+        print("Waiting for match...");
       }
-
-      // Status is "waiting" - listen for match via user document
-      _listenForMatch(uid);
-    } catch (e, stackTrace) {
-      debugPrint('Matchmaking error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      _stateController.add(MatchmakingState(
-        status: MatchmakingStatus.error,
-        errorMessage: e.toString(),
-      ));
+    } catch (e) {
+      print("Matchmaking error: $e");
+      rethrow;
     }
   }
 

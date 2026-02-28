@@ -24,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   late ChatService _chatService;
   late AuthService _authService;
   ChatRoomModel? _chatRoom;
+  bool _isEnded = false;
 
   @override
   void initState() {
@@ -39,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage() {
+    if (_isEnded) return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
@@ -51,6 +53,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
   }
 
+  Future<void> _exitChat() async {
+    if (!_isEnded) {
+      final uid = _authService.uid!;
+      await _chatService.endChat(
+        chatRoomId: widget.chatRoomId,
+        endedByUid: uid,
+      );
+    }
+    if (mounted) {
+      context.read<MatchmakingService>().clearCurrentMatch();
+      Navigator.pop(context);
+    }
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
@@ -61,87 +77,108 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final myUid = _authService.uid!;
-    final otherProfile = _chatRoom?.getOtherProfile(myUid);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppTheme.cardColor,
-              backgroundImage: otherProfile?.profilePicUrl != null
-                  ? CachedNetworkImageProvider(otherProfile!.profilePicUrl!)
-                  : null,
-              child: otherProfile?.profilePicUrl == null
-                  ? const Icon(Icons.person, size: 18)
-                  : null,
+    return StreamBuilder<ChatRoomModel?>(
+      stream: _chatService.chatRoomStream(widget.chatRoomId),
+      initialData: _chatRoom,
+      builder: (context, roomSnapshot) {
+        final room = roomSnapshot.data ?? _chatRoom;
+        if (room != null && room.isEnded && !_isEnded) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _isEnded = true);
+          });
+        }
+        final otherProfile = room?.getOtherProfile(myUid);
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppTheme.cardColor,
+                  backgroundImage: otherProfile?.profilePicUrl != null
+                      ? CachedNetworkImageProvider(otherProfile!.profilePicUrl!)
+                      : null,
+                  child: otherProfile?.profilePicUrl == null
+                      ? const Icon(Icons.person, size: 18)
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  otherProfile?.displayName ?? 'Stranger',
+                  style: const TextStyle(fontSize: 18),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text(
-              otherProfile?.displayName ?? 'Stranger',
-              style: const TextStyle(fontSize: 18),
-            ),
-          ],
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            context.read<MatchmakingService>().clearCurrentMatch();
-            Navigator.pop(context);
-          },
-        ),
-      ),
-      body: Column(
-        children: [
-          // Messages list
-          Expanded(
-            child: StreamBuilder<List<MessageModel>>(
-              stream: _chatService.getMessages(widget.chatRoomId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppTheme.primaryColor),
-                  );
-                }
-
-                final messages = snapshot.data ?? [];
-
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'Say hello! 👋',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  reverse: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final isMe = message.senderId == myUid;
-                    return _MessageBubble(
-                      message: message,
-                      isMe: isMe,
-                    );
-                  },
-                );
-              },
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: _exitChat,
             ),
           ),
+          body: Column(
+            children: [
+              if (_isEnded)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  color: Colors.redAccent.withOpacity(0.15),
+                  child: const Text(
+                    'Stranger has left the chat',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: StreamBuilder<List<MessageModel>>(
+                  stream: _chatService.getMessages(widget.chatRoomId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: AppTheme.primaryColor),
+                      );
+                    }
 
-          // Input bar
-          _buildInputBar(),
-        ],
-      ),
+                    final messages = snapshot.data ?? [];
+
+                    if (messages.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'Say hello!',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[index];
+                        final isMe = message.senderId == myUid;
+                        return _MessageBubble(
+                          message: message,
+                          isMe: isMe,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              _buildInputBar(),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -164,10 +201,11 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: TextField(
               controller: _messageController,
+              enabled: !_isEnded,
               textCapitalization: TextCapitalization.sentences,
               style: const TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Type a message...',
+                hintText: _isEnded ? 'Chat ended' : 'Type a message...',
                 filled: true,
                 fillColor: AppTheme.cardColor,
                 contentPadding: const EdgeInsets.symmetric(
@@ -184,11 +222,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            onPressed: _sendMessage,
+            onPressed: _isEnded ? null : _sendMessage,
             icon: const Icon(Icons.send_rounded),
-            color: AppTheme.primaryColor,
+            color: _isEnded ? AppTheme.textSecondary : AppTheme.primaryColor,
             style: IconButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+              backgroundColor: _isEnded
+                  ? AppTheme.cardColor
+                  : AppTheme.primaryColor.withOpacity(0.15),
             ),
           ),
         ],

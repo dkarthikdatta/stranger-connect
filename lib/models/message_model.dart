@@ -21,7 +21,9 @@ class MessageModel {
       id: doc.id,
       senderId: data['senderId'] ?? '',
       text: data['text'] ?? '',
-      timestamp: (data['timestamp'] as Timestamp).toDate(),
+      timestamp: data['timestamp'] != null
+          ? (data['timestamp'] as Timestamp).toDate()
+          : DateTime.now(),
       type: data['type'] ?? 'text',
     );
   }

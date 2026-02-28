@@ -25,11 +25,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Chat rooms: only participants can read
+    // Chat rooms: only participants can read; participants can update lastMessage fields
     match /chat_rooms/{roomId} {
       allow read: if request.auth != null
         && request.auth.uid in resource.data.participants;
-      allow write: if false; // only Cloud Functions create rooms
+      allow create, delete: if false;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastMessage', 'lastMessageAt', 'endedAt', 'endedBy']);
 
       // Messages: participants can read, only sender can create
       match /messages/{messageId} {
