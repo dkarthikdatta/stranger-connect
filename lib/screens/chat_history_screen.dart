@@ -99,7 +99,10 @@ class ChatHistoryScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ChatScreen(chatRoomId: room.id),
+                      builder: (_) => ChatScreen(
+                        chatRoomId: room.id,
+                        readOnly: true,
+                      ),
                     ),
                   );
                 },

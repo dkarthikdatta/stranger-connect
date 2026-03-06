@@ -143,3 +143,72 @@ export const leaveQueue = functions.https.onCall(async (data, context) => {
 
   return { status: "left" };
 });
+
+export const endChat = functions.https.onCall(async (data, context) => {
+  const uid = context.auth?.uid;
+  const chatRoomId = data?.chatRoomId as string | undefined;
+
+  if (!uid) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Must be authenticated"
+    );
+  }
+
+  if (!chatRoomId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "chatRoomId is required"
+    );
+  }
+
+  const chatRoomRef = db.collection("chat_rooms").doc(chatRoomId);
+
+  await db.runTransaction(async (transaction) => {
+    const roomSnap = await transaction.get(chatRoomRef);
+    if (!roomSnap.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Chat room not found"
+      );
+    }
+
+    const roomData = roomSnap.data()!;
+    const participants = (roomData.participants ?? []) as string[];
+    if (!participants.includes(uid)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "User is not a chat participant"
+      );
+    }
+
+    transaction.update(chatRoomRef, {
+      endedAt: admin.firestore.Timestamp.now(),
+      endedBy: uid,
+      active: false,
+    });
+
+    for (const participantUid of participants) {
+      transaction.update(db.collection("users").doc(participantUid), {
+        currentMatch: null,
+      });
+    }
+  });
+
+  // Remove any stale queue entries for this user after ending chat.
+  const queueSnapshot = await db
+    .collection("matchmaking_queue")
+    .where("userId", "==", uid)
+    .where("status", "==", "waiting")
+    .get();
+
+  if (!queueSnapshot.empty) {
+    const batch = db.batch();
+    for (const doc of queueSnapshot.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+  }
+
+  return { status: "ended" };
+});

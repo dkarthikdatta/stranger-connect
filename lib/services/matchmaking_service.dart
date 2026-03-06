@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:flutter/foundation.dart';
 import 'package:stranger_connect/services/auth_service.dart';
 
 enum MatchmakingStatus { idle, searching, matched, error, timeout }
@@ -32,28 +31,72 @@ class MatchmakingService {
   MatchmakingService(this._authService);
 
   Future<void> joinQueue() async {
-    final uid = _authService.uid;
-    if (uid == null) return;
+    var uid = _authService.uid;
+    if (uid == null) {
+      await _authService.signInAnonymously();
+      uid = _authService.uid;
+    }
+    if (uid == null) {
+      _stateController.add(MatchmakingState(
+        status: MatchmakingStatus.error,
+        errorMessage: 'Authentication unavailable',
+      ));
+      return;
+    }
 
+    // Defensive clear to avoid stale matches causing instant reconnects.
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'currentMatch': null,
+      });
+    } catch (_) {}
+
+    _listenForMatch(uid);
     _stateController.add(MatchmakingState(status: MatchmakingStatus.searching));
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('joinQueue');
-      final result = await callable.call();
+      final result = await _callJoinQueueWithRetry();
 
       final status = result.data['status'];
 
       if (status == 'matched') {
-        // Do nothing here.
-        // Navigation should ONLY happen from user doc listener.
-        print("Matched via backend");
+        final chatRoomId = result.data['chatRoomId'] as String?;
+        if (chatRoomId != null) {
+          _stateController.add(MatchmakingState(
+            status: MatchmakingStatus.matched,
+            chatRoomId: chatRoomId,
+          ));
+          _cleanup();
+        } else {
+          // Keep listener active as fallback if function omitted chatRoomId.
+          print("Matched via backend, waiting for currentMatch listener");
+        }
       } else {
         print("Waiting for match...");
       }
     } catch (e) {
       print("Matchmaking error: $e");
-      rethrow;
+      _stateController.add(MatchmakingState(
+        status: MatchmakingStatus.error,
+        errorMessage: e.toString(),
+      ));
     }
+  }
+
+  Future<HttpsCallableResult<dynamic>> _callJoinQueueWithRetry() async {
+    Object? lastError;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        final callable = _functions.httpsCallable('joinQueue');
+        return await callable.call().timeout(const Duration(seconds: 6));
+      } catch (e) {
+        lastError = e;
+        if (attempt < 2) {
+          await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError ?? Exception('joinQueue failed');
   }
 
   void _listenForMatch(String uid) {

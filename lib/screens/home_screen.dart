@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stranger_connect/models/user_model.dart';
-import 'package:stranger_connect/screens/chat_screen.dart';
 import 'package:stranger_connect/screens/matching_screen.dart';
 import 'package:stranger_connect/screens/chat_history_screen.dart';
+import 'package:stranger_connect/screens/profile_edit_screen.dart';
 import 'package:stranger_connect/services/auth_service.dart';
-import 'package:stranger_connect/services/matchmaking_service.dart';
 import 'package:stranger_connect/services/shake_service.dart';
 import 'package:stranger_connect/utils/app_theme.dart';
 
@@ -55,6 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _openProfileEditor() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+    );
+    if (changed == true) {
+      _loadUser();
+    }
+  }
+
   @override
   void dispose() {
     _shakeSubscription?.cancel();
@@ -67,6 +77,26 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Stranger Connect'),
+        leadingWidth: 60,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: GestureDetector(
+            onTap: _openProfileEditor,
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: AppTheme.cardColor,
+              backgroundImage: _user?.profilePicUrl != null
+                  ? CachedNetworkImageProvider(_user!.profilePicUrl!)
+                  : null,
+              child: _user?.profilePicUrl == null
+                  ? const Icon(
+                      Icons.person_rounded,
+                      color: AppTheme.textSecondary,
+                    )
+                  : null,
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline_rounded),
@@ -96,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 48),
 
               // Shake icon with animation
-              Icon(
+              const Icon(
                 Icons.vibration_rounded,
                 size: 120,
                 color: AppTheme.primaryColor,

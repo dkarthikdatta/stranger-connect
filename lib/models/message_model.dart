@@ -6,6 +6,7 @@ class MessageModel {
   final String text;
   final DateTime timestamp;
   final String type;
+  final String? clientMessageId;
 
   MessageModel({
     required this.id,
@@ -13,6 +14,7 @@ class MessageModel {
     required this.text,
     required this.timestamp,
     this.type = 'text',
+    this.clientMessageId,
   });
 
   factory MessageModel.fromFirestore(DocumentSnapshot doc) {
@@ -25,6 +27,7 @@ class MessageModel {
           ? (data['timestamp'] as Timestamp).toDate()
           : DateTime.now(),
       type: data['type'] ?? 'text',
+      clientMessageId: data['clientMessageId'],
     );
   }
 
@@ -34,6 +37,7 @@ class MessageModel {
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
       'type': type,
+      'clientMessageId': clientMessageId,
     };
   }
 }

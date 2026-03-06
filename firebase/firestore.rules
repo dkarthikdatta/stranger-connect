@@ -2,6 +2,18 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function roomData(roomId) {
+      return get(/databases/$(database)/documents/chat_rooms/$(roomId)).data;
+    }
+
+    function isRoomParticipant(roomId) {
+      return request.auth != null
+        && request.auth.uid in roomData(roomId).participants;
+    }
+
+    function isRoomActive(roomId) {
+      return !('endedBy' in roomData(roomId)) || roomData(roomId).endedBy == null;
+    }
 
     // App config: anyone authenticated can read, no client writes
     match /config/{docId} {
@@ -32,16 +44,19 @@ service cloud.firestore {
       allow create, delete: if false;
       allow update: if request.auth != null
         && request.auth.uid in resource.data.participants
+        && (!('endedBy' in resource.data) || resource.data.endedBy == null)
         && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['lastMessage', 'lastMessageAt', 'endedAt', 'endedBy']);
+            .hasOnly(['lastMessage', 'lastMessageAt', 'endedAt', 'endedBy', 'active']);
 
       // Messages: participants can read, only sender can create
       match /messages/{messageId} {
-        allow read: if request.auth != null
-          && request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.participants;
-        allow create: if request.auth != null
-          && request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.participants
-          && request.resource.data.senderId == request.auth.uid;
+        allow read: if isRoomParticipant(roomId);
+        allow create: if isRoomParticipant(roomId)
+          && isRoomActive(roomId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && (!('clientMessageId' in request.resource.data)
+              || request.resource.data.clientMessageId is string);
         allow update, delete: if false;
       }
     }

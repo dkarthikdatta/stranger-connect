@@ -52,7 +52,7 @@ class _MatchingScreenState extends State<MatchingScreen>
     _timerController.duration = Duration(seconds: _totalSeconds);
     _timerController.forward(from: 0.0);
 
-    _matchmakingService.joinQueue();
+    await _matchmakingService.joinQueue();
   }
 
   int get _secondsRemaining =>

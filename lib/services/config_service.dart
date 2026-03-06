@@ -26,12 +26,16 @@ class ConfigService {
 
   Future<AppConfig> load() async {
     try {
-      final doc = await _firestore.collection('config').doc('matchmaking').get();
+      final doc = await _firestore
+          .collection('config')
+          .doc('matchmaking')
+          .get()
+          .timeout(const Duration(seconds: 3));
       if (doc.exists) {
         _config = AppConfig.fromFirestore(doc);
       }
     } catch (_) {
-      // Fall back to defaults
+      // Fall back to cached/default values quickly when backend is unavailable.
     }
     return _config;
   }
