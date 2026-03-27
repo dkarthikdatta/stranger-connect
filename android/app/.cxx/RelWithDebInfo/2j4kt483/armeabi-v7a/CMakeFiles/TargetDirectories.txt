@@ -1,0 +1,2 @@
+/Users/karthik.datta/Desktop/personal/stranger-connect/android/app/.cxx/RelWithDebInfo/2j4kt483/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/karthik.datta/Desktop/personal/stranger-connect/android/app/.cxx/RelWithDebInfo/2j4kt483/armeabi-v7a/CMakeFiles/rebuild_cache.dir

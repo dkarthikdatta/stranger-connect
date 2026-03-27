@@ -1,0 +1,4 @@
+storePassword=Karthik@1
+keyPassword=Karthik@1
+keyAlias=upload
+storeFile=/Users/karthik.datta/upload-keystore.jks
